@@ -60,6 +60,21 @@ const createMainWindow = () => {
       console.error(
         `[main] did-fail-load ${errorCode} ${errorDescription} url=${validatedURL}`,
       );
+      // Under non-interactive launches (e.g. `nohup npm run start`),
+      // electron-forge may release Electron before Vite has finished binding
+      // its dev port, leaving the renderer permanently blank. Retry the load
+      // with a short backoff until Vite comes up.
+      if (
+        MAIN_WINDOW_VITE_DEV_SERVER_URL &&
+        validatedURL === MAIN_WINDOW_VITE_DEV_SERVER_URL &&
+        errorCode === -102
+      ) {
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+          }
+        }, 500);
+      }
     },
   );
 
