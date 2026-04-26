@@ -2,6 +2,7 @@ import path from 'node:path';
 import { app, BrowserWindow, session } from 'electron';
 import { registerDialogHandlers } from './dialog-ipc-handlers';
 import { registerRepoHandlers } from './repo-ipc-handlers';
+import { registerSessionHandlers } from './session-ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -96,6 +97,7 @@ app.whenReady().then(async () => {
 
   registerDialogHandlers();
   registerRepoHandlers();
+  registerSessionHandlers();
   createMainWindow();
 });
 
