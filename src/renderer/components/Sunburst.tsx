@@ -1,6 +1,6 @@
 import * as d3 from 'd3';
 import { useEffect, useRef, useState } from 'react';
-import type { TreeNode } from '@/shared/tree';
+import { allocateSiblingArcs, type TreeNode } from '@/shared/tree';
 
 interface Props {
   data: TreeNode;
@@ -22,6 +22,12 @@ interface Props {
 const WIDTH = 928;
 const HEIGHT = 928;
 const RADIUS = WIDTH / 6;
+
+// Minimum arc length (viewBox px) at a node's midradius. Slices below this
+// would render without a legible label, so per-parent we inflate them to at
+// least this width and steal the surplus from larger siblings. Tuned for the
+// 10px sans-serif font.
+const MIN_SWEEP_PX = 14;
 
 type ArcDatum = d3.HierarchyRectangularNode<TreeNode> & {
   current: { x0: number; x1: number; y0: number; y1: number };
@@ -47,6 +53,31 @@ function labelTransform(d: { x0: number; x1: number; y0: number; y1: number }) {
   const x = (((d.x0 + d.x1) / 2) * 180) / Math.PI;
   const y = ((d.y0 + d.y1) / 2) * RADIUS;
   return `rotate(${x - 90}) translate(${y},0) rotate(${x < 90 ? 0 : 180})`;
+}
+
+function rebalanceArcs(node: ArcDatum) {
+  const children = node.children as ArcDatum[] | undefined;
+  if (!children || children.length === 0) return;
+
+  const parentArc = node.x1 - node.x0;
+  const childDepth = node.depth + 1;
+  // Min angular sweep needed for the children's ring to clear MIN_SWEEP_PX
+  // of arc length at their midradius.
+  const minSweep = MIN_SWEEP_PX / ((childDepth + 0.5) * RADIUS);
+  const arcs = allocateSiblingArcs(
+    children.map((c) => c.value ?? 0),
+    parentArc,
+    minSweep,
+  );
+
+  let cursor = node.x0;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    child.x0 = cursor;
+    cursor += arcs[i];
+    child.x1 = cursor;
+    rebalanceArcs(child);
+  }
 }
 
 export function Sunburst({ data, initialFocusPath, onFocusChange }: Props) {
@@ -75,6 +106,13 @@ export function Sunburst({ data, initialFocusPath, onFocusChange }: Props) {
     const root = d3
       .partition<TreeNode>()
       .size([2 * Math.PI, hierarchy.height + 1])(hierarchy) as ArcDatum;
+
+    // Re-distribute each parent's children so even tiny leaves get enough
+    // angular sweep to host a label. d3.partition's default allocation is
+    // strictly proportional to value, which makes 1-line files invisible
+    // next to a 1000-line sibling. We trade a little LOC fidelity at the
+    // small end for label legibility everywhere.
+    rebalanceArcs(root);
 
     root.each((d) => {
       const ad = d as ArcDatum;
