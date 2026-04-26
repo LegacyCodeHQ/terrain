@@ -65,9 +65,7 @@ const createMainWindow = () => {
   mainWindow.webContents.on(
     'console-message',
     (_event, level, message, line, sourceId) => {
-      console.log(
-        `[renderer:${level}] ${message} (${sourceId}:${line})`,
-      );
+      console.log(`[renderer:${level}] ${message} (${sourceId}:${line})`);
     },
   );
 
@@ -81,21 +79,19 @@ app.whenReady().then(async () => {
   // client (inline scripts, eval, ws:) work without per-Vite-version CSP
   // surgery. The dev surface is local and trusted.
   if (!isDev) {
-    session.defaultSession.webRequest.onHeadersReceived(
-      (details, callback) => {
-        const url = details.url ?? '';
-        if (!url.startsWith('file://')) {
-          callback({ responseHeaders: details.responseHeaders });
-          return;
-        }
-        callback({
-          responseHeaders: {
-            ...(details.responseHeaders ?? {}),
-            'Content-Security-Policy': [APP_CSP],
-          },
-        });
-      },
-    );
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const url = details.url ?? '';
+      if (!url.startsWith('file://')) {
+        callback({ responseHeaders: details.responseHeaders });
+        return;
+      }
+      callback({
+        responseHeaders: {
+          ...(details.responseHeaders ?? {}),
+          'Content-Security-Policy': [APP_CSP],
+        },
+      });
+    });
   }
 
   registerDialogHandlers();
