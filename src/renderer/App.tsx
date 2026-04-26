@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { DIALOG_IPC } from '@/shared/ipc/dialog-ipc';
 import {
   REPO_IPC,
@@ -9,31 +9,72 @@ import {
 import { EmptyState } from './components/EmptyState';
 import { ProgressIndicator } from './components/ProgressIndicator';
 import { Sunburst } from './components/Sunburst';
-import { Toolbar } from './components/Toolbar';
+import { TabBar } from './components/TabBar';
 
-type AppState =
-  | { kind: 'empty' }
-  | { kind: 'scanning'; repoPath: string; filesScanned: number }
-  | { kind: 'loaded'; result: ScanResult };
+type Tab =
+  | {
+      id: string;
+      kind: 'scanning';
+      repoPath: string;
+      title: string;
+      filesScanned: number;
+    }
+  | {
+      id: string;
+      kind: 'loaded';
+      repoPath: string;
+      title: string;
+      result: ScanResult;
+    };
+
+let tabIdSeq = 0;
+function nextTabId(): string {
+  tabIdSeq += 1;
+  return `tab-${tabIdSeq}`;
+}
+
+function basenameOf(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, '');
+  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
 
 export function App() {
-  const [state, setState] = useState<AppState>({ kind: 'empty' });
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
   useEffect(() => {
     const off = window.electronAPI.on(REPO_IPC.SCAN_PROGRESS, (...args) => {
       const progress = args[0] as ScanProgress | undefined;
       if (!progress) return;
-      const current = stateRef.current;
-      if (current.kind !== 'scanning') return;
-      setState({ ...current, filesScanned: progress.filesScanned });
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === progress.scanId && t.kind === 'scanning'
+            ? { ...t, filesScanned: progress.filesScanned }
+            : t,
+        ),
+      );
     });
     return () => off();
   }, []);
 
   const showError = useCallback(async (title: string, message: string) => {
     await window.electronAPI.invoke(DIALOG_IPC.SHOW_ERROR, { title, message });
+  }, []);
+
+  const removeTab = useCallback((id: string) => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === id);
+      if (idx < 0) return prev;
+      const next = prev.filter((t) => t.id !== id);
+      setActiveTabId((current) => {
+        if (current !== id) return current;
+        if (next.length === 0) return null;
+        // Prefer the tab to the left of the closed one.
+        return next[Math.min(Math.max(idx - 1, 0), next.length - 1)].id;
+      });
+      return next;
+    });
   }, []);
 
   const openRepository = useCallback(async () => {
@@ -51,13 +92,23 @@ export function App() {
         'Not a git repository',
         'This folder is not a git repository.',
       );
-      setState({ kind: 'empty' });
       return;
     }
 
-    setState({ kind: 'scanning', repoPath, filesScanned: 0 });
+    const id = nextTabId();
+    const title = basenameOf(repoPath);
+    const newTab: Tab = {
+      id,
+      kind: 'scanning',
+      repoPath,
+      title,
+      filesScanned: 0,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(id);
 
     const result = (await window.electronAPI.invoke(REPO_IPC.SCAN, {
+      scanId: id,
       repoPath,
     })) as ScanResult;
 
@@ -66,35 +117,49 @@ export function App() {
         'Empty repository',
         'No tracked files in this repository.',
       );
-      setState({ kind: 'empty' });
+      removeTab(id);
       return;
     }
 
-    setState({ kind: 'loaded', result });
-  }, [showError]);
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { id, kind: 'loaded', repoPath, title: result.repoName, result }
+          : t,
+      ),
+    );
+  }, [showError, removeTab]);
 
-  const closeRepository = useCallback(() => {
-    setState({ kind: 'empty' });
+  const switchTab = useCallback((id: string) => {
+    setActiveTabId(id);
   }, []);
 
-  const repoName = state.kind === 'loaded' ? state.result.repoName : undefined;
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
   return (
     <div className="app">
-      <Toolbar
-        repoName={repoName}
-        onOpen={openRepository}
-        onClose={state.kind === 'loaded' ? closeRepository : undefined}
-      />
+      {tabs.length === 0 ? (
+        <div className="titlebar-spacer" aria-hidden="true" />
+      ) : (
+        <TabBar
+          tabs={tabs.map((t) => ({ id: t.id, title: t.title }))}
+          activeTabId={activeTabId}
+          onSwitch={switchTab}
+          onClose={removeTab}
+          onAdd={openRepository}
+        />
+      )}
       <div className="workspace">
-        {state.kind === 'empty' ? <EmptyState onOpen={openRepository} /> : null}
-        {state.kind === 'scanning' ? (
+        {activeTab === null ? <EmptyState onOpen={openRepository} /> : null}
+        {activeTab?.kind === 'scanning' ? (
           <ProgressIndicator
             mode="centered"
-            filesScanned={state.filesScanned}
+            filesScanned={activeTab.filesScanned}
           />
         ) : null}
-        {state.kind === 'loaded' ? <Sunburst data={state.result.tree} /> : null}
+        {activeTab?.kind === 'loaded' ? (
+          <Sunburst key={activeTab.id} data={activeTab.result.tree} />
+        ) : null}
       </div>
     </div>
   );

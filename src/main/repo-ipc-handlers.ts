@@ -83,8 +83,12 @@ async function applyGitattributesFilter(
   return files.filter((f) => !excluded.has(f));
 }
 
-function notifyProgress(sender: WebContents, filesScanned: number): void {
-  sender.send(REPO_IPC.SCAN_PROGRESS, { filesScanned });
+function notifyProgress(
+  sender: WebContents,
+  scanId: string,
+  filesScanned: number,
+): void {
+  sender.send(REPO_IPC.SCAN_PROGRESS, { scanId, filesScanned });
 }
 
 /**
@@ -158,15 +162,18 @@ export function registerRepoHandlers(): void {
 
   ipcMain.handle(
     REPO_IPC.SCAN,
-    async (event, { repoPath }: { repoPath: string }): Promise<ScanResult> => {
+    async (
+      event,
+      { scanId, repoPath }: { scanId: string; repoPath: string },
+    ): Promise<ScanResult> => {
       const sender = event.sender;
-      notifyProgress(sender, 0);
+      notifyProgress(sender, scanId, 0);
 
       const tracked = await listTrackedFiles(repoPath);
       const filtered = await applyGitattributesFilter(repoPath, tracked);
 
       const weights = await countLocForFiles(repoPath, filtered, (n) =>
-        notifyProgress(sender, n),
+        notifyProgress(sender, scanId, n),
       );
 
       const repoName = path.basename(path.resolve(repoPath));
@@ -174,6 +181,7 @@ export function registerRepoHandlers(): void {
       const totalLines = weights.reduce((sum, w) => sum + w.value, 0);
 
       return {
+        scanId,
         repoPath,
         repoName,
         fileCount: weights.length,

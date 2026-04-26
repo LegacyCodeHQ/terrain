@@ -9,10 +9,12 @@ export type RepoValidation =
   | { ok: false; reason: 'not-a-git-repo' };
 
 export type ScanProgress = {
+  scanId: string;
   filesScanned: number;
 };
 
 export type ScanResult = {
+  scanId: string;
   repoPath: string;
   repoName: string;
   fileCount: number;
