@@ -20,12 +20,23 @@ function sanitize(input: unknown): PersistedSession {
   const rawTabs = Array.isArray(obj.tabs) ? obj.tabs : [];
   const tabs = rawTabs
     .filter(
-      (t): t is { repoPath: string } =>
+      (t): t is { repoPath: string; focusPath?: unknown } =>
         typeof t === 'object' &&
         t !== null &&
         typeof (t as { repoPath?: unknown }).repoPath === 'string',
     )
-    .map((t) => ({ repoPath: t.repoPath }));
+    .map((t) => {
+      const out: { repoPath: string; focusPath?: string[] } = {
+        repoPath: t.repoPath,
+      };
+      if (
+        Array.isArray(t.focusPath) &&
+        t.focusPath.every((s) => typeof s === 'string')
+      ) {
+        out.focusPath = t.focusPath as string[];
+      }
+      return out;
+    });
   const activeIndex =
     typeof obj.activeIndex === 'number' &&
     obj.activeIndex >= 0 &&

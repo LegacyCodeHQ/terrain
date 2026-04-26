@@ -4,6 +4,19 @@ import type { TreeNode } from '@/shared/tree';
 
 interface Props {
   data: TreeNode;
+  /**
+   * Path of node names from root to the desired focus, e.g.
+   * `["repo", "src", "main"]`. Applied once when the chart mounts. If the
+   * path can't be fully resolved, focuses the deepest matching ancestor
+   * (or root if nothing matches).
+   */
+  initialFocusPath?: string[];
+  /**
+   * Called whenever the user changes the zoom focus (slice click, center
+   * click, or breadcrumb click). The path is from root, e.g. ["repo"] for
+   * the unzoomed view.
+   */
+  onFocusChange?: (path: string[]) => void;
 }
 
 const WIDTH = 928;
@@ -36,10 +49,18 @@ function labelTransform(d: { x0: number; x1: number; y0: number; y1: number }) {
   return `rotate(${x - 90}) translate(${y},0) rotate(${x < 90 ? 0 : 180})`;
 }
 
-export function Sunburst({ data }: Props) {
+export function Sunburst({ data, initialFocusPath, onFocusChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [breadcrumb, setBreadcrumb] = useState<TreeNode[]>([]);
   const focusFnRef = useRef<((node: TreeNode) => void) | null>(null);
+
+  // Stable refs so the effect doesn't re-run when these change. The
+  // initial-focus path is only consumed once on mount; the change callback
+  // is read on each user click.
+  const onFocusChangeRef = useRef(onFocusChange);
+  onFocusChangeRef.current = onFocusChange;
+  const initialFocusPathRef = useRef(initialFocusPath);
+  // Don't update — first mount value only.
 
   useEffect(() => {
     const container = containerRef.current;
@@ -101,7 +122,7 @@ export function Sunburst({ data }: Props) {
     path
       .filter((d) => Boolean(d.children))
       .style('cursor', 'pointer')
-      .on('click', clicked);
+      .on('click', (event, d) => clicked(event, d, 750));
 
     path.append('title').text(
       (d) =>
@@ -138,7 +159,7 @@ export function Sunburst({ data }: Props) {
       .style('cursor', 'pointer')
       .on('click', (event) => {
         if (focusNode.parent) {
-          clicked(event, focusNode.parent as ArcDatum);
+          clicked(event, focusNode.parent as ArcDatum, 750);
         }
       });
 
@@ -146,18 +167,18 @@ export function Sunburst({ data }: Props) {
       const targetNode = (root.descendants() as ArcDatum[]).find(
         (n) => n.data === target,
       );
-      if (targetNode) clicked(null, targetNode);
+      if (targetNode) clicked(null, targetNode, 750);
     };
 
-    function clicked(_event: unknown, p: ArcDatum) {
+    function clicked(_event: unknown, p: ArcDatum, durationMs: number) {
       focusNode = p;
       parent.datum(p.parent ?? root);
-      setBreadcrumb(
-        p
-          .ancestors()
-          .map((n) => n.data)
-          .reverse(),
-      );
+      const ancestorData = p
+        .ancestors()
+        .map((n) => n.data)
+        .reverse();
+      setBreadcrumb(ancestorData);
+      onFocusChangeRef.current?.(ancestorData.map((n) => n.name));
 
       root.each((node) => {
         const nd = node as ArcDatum;
@@ -175,7 +196,7 @@ export function Sunburst({ data }: Props) {
         };
       });
 
-      const t = svg.transition().duration(750) as AnyTransition;
+      const t = svg.transition().duration(durationMs) as AnyTransition;
 
       path
         .transition(t)
@@ -205,6 +226,25 @@ export function Sunburst({ data }: Props) {
         .transition(t)
         .attr('fill-opacity', (d) => +labelVisible(d.target ?? d.current))
         .attrTween('transform', (d) => () => labelTransform(d.current));
+    }
+
+    // Snap to the persisted focus path, if any. Walk root → ... by name and
+    // stop at the deepest match (or root if nothing matches beyond it).
+    const focusPath = initialFocusPathRef.current;
+    if (focusPath && focusPath.length > 1) {
+      let cursor: ArcDatum = root;
+      // First segment is the root's own name; start matching at index 1.
+      for (let i = 1; i < focusPath.length; i++) {
+        const name = focusPath[i];
+        const child = (cursor.children as ArcDatum[] | undefined)?.find(
+          (c) => c.data.name === name,
+        );
+        if (!child) break;
+        cursor = child;
+      }
+      if (cursor !== root) {
+        clicked(null, cursor, 0);
+      }
     }
 
     return () => {

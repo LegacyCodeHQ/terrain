@@ -19,6 +19,7 @@ type Tab =
       repoPath: string;
       title: string;
       filesScanned: number;
+      pendingFocusPath?: string[];
     }
   | {
       id: string;
@@ -26,6 +27,7 @@ type Tab =
       repoPath: string;
       title: string;
       result: ScanResult;
+      focusPath?: string[];
     };
 
 let tabIdSeq = 0;
@@ -38,6 +40,17 @@ function basenameOf(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
   const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
   return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+function focusPathsEqual(
+  a: string[] | undefined,
+  b: string[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 export function App() {
@@ -102,11 +115,21 @@ export function App() {
       }
 
       setTabs((prev) =>
-        prev.map((t) =>
-          t.id === id
-            ? { id, kind: 'loaded', repoPath, title: result.repoName, result }
-            : t,
-        ),
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          // Carry over any pending focusPath from the scanning tab so it
+          // gets handed to the Sunburst as initialFocusPath on mount.
+          const pending =
+            t.kind === 'scanning' ? t.pendingFocusPath : undefined;
+          return {
+            id,
+            kind: 'loaded',
+            repoPath,
+            title: result.repoName,
+            result,
+            focusPath: pending,
+          };
+        }),
       );
     },
     [showError, removeTab],
@@ -148,6 +171,7 @@ export function App() {
       const restored = session.tabs.map((t) => ({
         id: nextTabId(),
         repoPath: t.repoPath,
+        focusPath: t.focusPath,
       }));
       const initialTabs: Tab[] = restored.map((r) => ({
         id: r.id,
@@ -155,6 +179,7 @@ export function App() {
         repoPath: r.repoPath,
         title: basenameOf(r.repoPath),
         filesScanned: 0,
+        pendingFocusPath: r.focusPath,
       }));
       setTabs(initialTabs);
       const activeIdx = session.activeIndex;
@@ -193,7 +218,17 @@ export function App() {
             })();
       const payload: PersistedSession = {
         version: 1,
-        tabs: tabs.map((t) => ({ repoPath: t.repoPath })),
+        tabs: tabs.map((t) => {
+          const focusPath =
+            t.kind === 'loaded'
+              ? t.focusPath
+              : t.kind === 'scanning'
+                ? t.pendingFocusPath
+                : undefined;
+          return focusPath && focusPath.length > 1
+            ? { repoPath: t.repoPath, focusPath }
+            : { repoPath: t.repoPath };
+        }),
         activeIndex,
       };
       void window.electronAPI.invoke(SESSION_IPC.SAVE, payload);
@@ -228,6 +263,20 @@ export function App() {
     setActiveTabId(id);
   }, []);
 
+  const updateFocusPath = useCallback((id: string, path: string[]) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        if (t.kind === 'loaded') {
+          // Skip if unchanged to avoid a redundant save round-trip.
+          if (focusPathsEqual(t.focusPath, path)) return t;
+          return { ...t, focusPath: path };
+        }
+        return t;
+      }),
+    );
+  }, []);
+
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
   return (
@@ -252,7 +301,12 @@ export function App() {
           />
         ) : null}
         {activeTab?.kind === 'loaded' ? (
-          <Sunburst key={activeTab.id} data={activeTab.result.tree} />
+          <Sunburst
+            key={activeTab.id}
+            data={activeTab.result.tree}
+            initialFocusPath={activeTab.focusPath}
+            onFocusChange={(path) => updateFocusPath(activeTab.id, path)}
+          />
         ) : null}
       </div>
     </div>

@@ -5,7 +5,7 @@ export const SESSION_IPC = {
 
 export type PersistedSession = {
   version: 1;
-  tabs: Array<{ repoPath: string }>;
+  tabs: Array<{ repoPath: string; focusPath?: string[] }>;
   activeIndex: number | null;
 };
 
