@@ -1,6 +1,6 @@
 import * as d3 from 'd3';
 import { useEffect, useRef, useState } from 'react';
-import { allocateSiblingArcs, type TreeNode } from '@/shared/tree';
+import { rebalanceArcs, type TreeNode } from '@/shared/tree';
 
 interface Props {
   data: TreeNode;
@@ -55,31 +55,6 @@ function labelTransform(d: { x0: number; x1: number; y0: number; y1: number }) {
   return `rotate(${x - 90}) translate(${y},0) rotate(${x < 90 ? 0 : 180})`;
 }
 
-function rebalanceArcs(node: ArcDatum) {
-  const children = node.children as ArcDatum[] | undefined;
-  if (!children || children.length === 0) return;
-
-  const parentArc = node.x1 - node.x0;
-  const childDepth = node.depth + 1;
-  // Min angular sweep needed for the children's ring to clear MIN_SWEEP_PX
-  // of arc length at their midradius.
-  const minSweep = MIN_SWEEP_PX / ((childDepth + 0.5) * RADIUS);
-  const arcs = allocateSiblingArcs(
-    children.map((c) => c.value ?? 0),
-    parentArc,
-    minSweep,
-  );
-
-  let cursor = node.x0;
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-    child.x0 = cursor;
-    cursor += arcs[i];
-    child.x1 = cursor;
-    rebalanceArcs(child);
-  }
-}
-
 export function Sunburst({ data, initialFocusPath, onFocusChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [breadcrumb, setBreadcrumb] = useState<TreeNode[]>([]);
@@ -112,7 +87,7 @@ export function Sunburst({ data, initialFocusPath, onFocusChange }: Props) {
     // strictly proportional to value, which makes 1-line files invisible
     // next to a 1000-line sibling. We trade a little LOC fidelity at the
     // small end for label legibility everywhere.
-    rebalanceArcs(root);
+    rebalanceArcs(root, { minSweepPx: MIN_SWEEP_PX, radius: RADIUS });
 
     root.each((d) => {
       const ad = d as ArcDatum;
