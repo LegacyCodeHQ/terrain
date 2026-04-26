@@ -7,51 +7,10 @@ import {
   type ScanResult,
 } from '@/shared/ipc/repo-ipc';
 import { type PersistedSession, SESSION_IPC } from '@/shared/ipc/session-ipc';
-import { EmptyState } from './components/EmptyState';
-import { ProgressIndicator } from './components/ProgressIndicator';
-import { Sunburst } from './components/Sunburst';
 import { TabBar } from './components/TabBar';
-
-type Tab =
-  | {
-      id: string;
-      kind: 'scanning';
-      repoPath: string;
-      title: string;
-      filesScanned: number;
-      pendingFocusPath?: string[];
-    }
-  | {
-      id: string;
-      kind: 'loaded';
-      repoPath: string;
-      title: string;
-      result: ScanResult;
-      focusPath?: string[];
-    };
-
-let tabIdSeq = 0;
-function nextTabId(): string {
-  tabIdSeq += 1;
-  return `tab-${tabIdSeq}`;
-}
-
-function basenameOf(p: string): string {
-  const trimmed = p.replace(/[\\/]+$/, '');
-  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
-  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
-}
-
-function focusPathsEqual(
-  a: string[] | undefined,
-  b: string[] | undefined,
-): boolean {
-  if (a === b) return true;
-  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
-}
+import { TitlebarSpacer } from './components/TitlebarSpacer';
+import { Workspace } from './components/Workspace';
+import { basenameOf, focusPathsEqual, nextTabId, type Tab } from './tab';
 
 export function App() {
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -282,7 +241,7 @@ export function App() {
   return (
     <div className="app">
       {tabs.length === 0 ? (
-        <div className="titlebar-spacer" aria-hidden="true" />
+        <TitlebarSpacer />
       ) : (
         <TabBar
           tabs={tabs.map((t) => ({ id: t.id, title: t.title }))}
@@ -292,23 +251,11 @@ export function App() {
           onAdd={openRepository}
         />
       )}
-      <div className="workspace">
-        {activeTab === null ? <EmptyState onOpen={openRepository} /> : null}
-        {activeTab?.kind === 'scanning' ? (
-          <ProgressIndicator
-            mode="centered"
-            filesScanned={activeTab.filesScanned}
-          />
-        ) : null}
-        {activeTab?.kind === 'loaded' ? (
-          <Sunburst
-            key={activeTab.id}
-            data={activeTab.result.tree}
-            initialFocusPath={activeTab.focusPath}
-            onFocusChange={(path) => updateFocusPath(activeTab.id, path)}
-          />
-        ) : null}
-      </div>
+      <Workspace
+        activeTab={activeTab}
+        onOpen={openRepository}
+        onFocusChange={updateFocusPath}
+      />
     </div>
   );
 }
