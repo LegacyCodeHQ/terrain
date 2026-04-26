@@ -16,5 +16,6 @@ export type ScanResult = {
   repoPath: string;
   repoName: string;
   fileCount: number;
+  totalLines: number;
   tree: import('../tree').TreeNode;
 };

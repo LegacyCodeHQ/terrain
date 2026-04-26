@@ -109,7 +109,7 @@ export function Sunburst({ data }: Props) {
           .ancestors()
           .map((n) => n.data.name)
           .reverse()
-          .join('/')}\n${numberFormat(d.value ?? 0)} files`,
+          .join('/')}\n${numberFormat(d.value ?? 0)} lines`,
     );
 
     const label = svg

@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { ipcMain, type WebContents } from 'electron';
@@ -7,11 +8,13 @@ import {
   type RepoValidation,
   type ScanResult,
 } from '@/shared/ipc/repo-ipc';
-import { buildTree } from '@/shared/tree';
+import { buildTree, type FileWeight } from '@/shared/tree';
 
 const execFileAsync = promisify(execFile);
 
 const PROGRESS_INTERVAL_MS = 50;
+const LOC_READ_CONCURRENCY = 16;
+const NEWLINE = 0x0a;
 
 async function isGitRepo(repoPath: string): Promise<boolean> {
   try {
@@ -84,6 +87,63 @@ function notifyProgress(sender: WebContents, filesScanned: number): void {
   sender.send(REPO_IPC.SCAN_PROGRESS, { filesScanned });
 }
 
+/**
+ * Counts lines in a file by scanning its bytes for `\n`. Returns 0 for files
+ * that can't be read (missing on disk, permission denied, etc.) so that one
+ * unreadable file doesn't fail the whole scan.
+ */
+async function countLines(absPath: string): Promise<number> {
+  try {
+    const buf = await fs.readFile(absPath);
+    if (buf.length === 0) return 0;
+    let count = 0;
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i] === NEWLINE) count++;
+    }
+    // If the last byte isn't a newline, the trailing partial line still counts.
+    if (buf[buf.length - 1] !== NEWLINE) count++;
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Reads each file and counts LOC, with bounded concurrency. Reports progress
+ * (file count completed) via the provided callback, throttled.
+ */
+async function countLocForFiles(
+  repoPath: string,
+  files: string[],
+  onProgress: (filesProcessed: number) => void,
+): Promise<FileWeight[]> {
+  const results: FileWeight[] = new Array(files.length);
+  let nextIndex = 0;
+  let completed = 0;
+  let lastTick = Date.now();
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= files.length) return;
+      const relPath = files[i];
+      const value = await countLines(path.join(repoPath, relPath));
+      results[i] = { path: relPath, value };
+      completed++;
+      const now = Date.now();
+      if (now - lastTick >= PROGRESS_INTERVAL_MS) {
+        onProgress(completed);
+        lastTick = now;
+      }
+    }
+  }
+
+  const workerCount = Math.min(LOC_READ_CONCURRENCY, files.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  onProgress(completed);
+  return results;
+}
+
 export function registerRepoHandlers(): void {
   ipcMain.handle(
     REPO_IPC.VALIDATE,
@@ -103,33 +163,21 @@ export function registerRepoHandlers(): void {
       notifyProgress(sender, 0);
 
       const tracked = await listTrackedFiles(repoPath);
-      notifyProgress(sender, tracked.length);
-
       const filtered = await applyGitattributesFilter(repoPath, tracked);
 
-      // Throttle progress while building the tree so the indicator animates
-      // for moderately large repos without flooding IPC.
-      let lastTick = Date.now();
-      let scanned = 0;
-      const paths: string[] = [];
-      for (const p of filtered) {
-        paths.push(p);
-        scanned++;
-        const now = Date.now();
-        if (now - lastTick >= PROGRESS_INTERVAL_MS) {
-          notifyProgress(sender, scanned);
-          lastTick = now;
-        }
-      }
-      notifyProgress(sender, scanned);
+      const weights = await countLocForFiles(repoPath, filtered, (n) =>
+        notifyProgress(sender, n),
+      );
 
       const repoName = path.basename(path.resolve(repoPath));
-      const tree = buildTree(repoName, paths);
+      const tree = buildTree(repoName, weights);
+      const totalLines = weights.reduce((sum, w) => sum + w.value, 0);
 
       return {
         repoPath,
         repoName,
-        fileCount: paths.length,
+        fileCount: weights.length,
+        totalLines,
         tree,
       };
     },
@@ -141,4 +189,6 @@ export const _internal = {
   isGitRepo,
   listTrackedFiles,
   applyGitattributesFilter,
+  countLines,
+  countLocForFiles,
 };
