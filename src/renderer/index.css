@@ -1,0 +1,35 @@
+:root {
+  color-scheme: dark;
+  --bg: #111111;
+  --bg-elevated: #1c1c1c;
+  --fg: #e8e8e8;
+  --fg-muted: #999999;
+  --fg-subtle: #666666;
+  --accent: #4a9eff;
+  --border: #2a2a2a;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+}

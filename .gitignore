@@ -1,0 +1,28 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# Coverage
+coverage
+*.lcov
+
+# Dependencies
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Vite
+.vite/
+dist/
+
+# Electron-Forge
+out/
+
+# IDE
+.idea/
+.vscode/
