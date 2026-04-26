@@ -14,7 +14,9 @@
     "format": "biome format --write src/",
     "test": "jest",
     "test:main": "jest --selectProjects main",
-    "test:renderer": "jest --selectProjects renderer"
+    "test:renderer": "jest --selectProjects renderer",
+    "setup:hooks": "git config core.hooksPath .githooks",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && npm run setup:hooks --silent || true"
   },
   "author": {
     "name": "Ragunath Jawahar",

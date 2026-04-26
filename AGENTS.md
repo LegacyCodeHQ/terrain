@@ -24,8 +24,21 @@ npm run test:main       # Main process tests only
 npm run test:renderer   # Renderer process tests only
 npm run package         # Build unsigned .app
 npm run make            # Create distributable
+npm run setup:hooks     # Wire up .githooks/ (auto-runs on npm install)
 npx jest --testPathPattern=<pattern>  # Single test file
 ```
+
+## Quality gates
+
+CI runs `npm run lint` and `npm test` on every push/PR (`.github/workflows/ci.yml`).
+
+Local `.githooks/` mirror the same checks before code leaves the machine:
+
+- **pre-commit** — `npm run lint`
+- **pre-push** — `npm run lint && npm test`
+
+Hooks auto-install via the `prepare` script on `npm install`. To wire them up
+manually, run `npm run setup:hooks` once.
 
 ## Architecture
 
