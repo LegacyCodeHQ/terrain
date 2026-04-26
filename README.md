@@ -37,4 +37,6 @@ See [PRD.md](PRD.md) for the v1 product spec, scope, and acceptance criteria, an
 
 ## License
 
-Copyright © 2026-present, Legacy Code Headquarters (OPC) Private Limited. All rights reserved.
+This project is licensed under the [Apache License, Version 2.0](LICENSE).
+
+Copyright © 2026-present, Legacy Code Headquarters (OPC) Private Limited.
