@@ -2,7 +2,6 @@
 
 [![Built with Clarity](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FLegacyCodeHQ%2Fclarity-cli%2Frefs%2Fheads%2Fmain%2Fbadges%2Fshields.io.json)](https://github.com/LegacyCodeHQ/clarity-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)](#)
 
 ![Terrain sunburst of a git repository](docs/images/terrain.png)
 
