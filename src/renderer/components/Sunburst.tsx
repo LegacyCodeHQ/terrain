@@ -1,6 +1,6 @@
 import * as d3 from 'd3';
 import { useEffect, useRef, useState } from 'react';
-import type { TreeNode } from '@/shared/tree';
+import { coalesceSmallNodes, type TreeNode } from '@/shared/tree';
 
 interface Props {
   data: TreeNode;
@@ -22,6 +22,12 @@ interface Props {
 const WIDTH = 928;
 const HEIGHT = 928;
 const RADIUS = WIDTH / 6;
+
+// Minimum arc length (viewBox px) at a node's midradius for its label to be
+// considered legible. Children below this threshold are bucketed per-parent
+// into a "N small files" sibling so that thin slivers stop dropping their
+// labels entirely. Tuned for the 10px sans-serif font.
+const MIN_LABEL_ARC_PX = 16;
 
 type ArcDatum = d3.HierarchyRectangularNode<TreeNode> & {
   current: { x0: number; x1: number; y0: number; y1: number };
@@ -67,8 +73,13 @@ export function Sunburst({ data, initialFocusPath, onFocusChange }: Props) {
     if (!container) return;
     container.innerHTML = '';
 
+    const coalesced = coalesceSmallNodes(data, {
+      minLabelArcPx: MIN_LABEL_ARC_PX,
+      radius: RADIUS,
+    });
+
     const hierarchy = d3
-      .hierarchy<TreeNode>(data)
+      .hierarchy<TreeNode>(coalesced)
       .sum((d) => d.value ?? 0)
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 
