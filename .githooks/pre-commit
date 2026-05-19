@@ -6,5 +6,12 @@ cd "$repo_root"
 
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
 
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not installed. Install: https://github.com/gitleaks/gitleaks#installing" >&2
+  exit 1
+fi
+echo "pre-commit: running gitleaks git --pre-commit --staged"
+gitleaks git --pre-commit --staged --redact --verbose
+
 echo "pre-commit: running npm run lint"
 npm run lint
